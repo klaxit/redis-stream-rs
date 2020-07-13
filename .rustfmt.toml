@@ -1,0 +1,3 @@
+# Number of spaces per tab.
+# Default: 4
+tab_spaces = 2
