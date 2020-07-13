@@ -1,0 +1,14 @@
+[package]
+name = "redis-stream"
+version = "0.0.0"
+authors = ["Jean-Paul Bonnetouche <dev@klaxit.com>"]
+keywords = ["redis", "database", "stream"]
+description = "Stream and consume data from redis streams."
+repository = "https://github.com/klaxit/redis-stream-rs"
+license = "MIT"
+readme = "README.md"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
