@@ -2,21 +2,22 @@
 name = "redis-stream"
 version = "0.0.0"
 authors = ["Jean-Paul Bonnetouche <dev@klaxit.com>"]
-keywords = ["redis", "database", "stream"]
+keywords = ["redis", "database", "stream", "consumer groups"]
 description = "Stream and consume data from redis streams."
+homepage = "https://github.com/klaxit/redis-stream-rs"
 repository = "https://github.com/klaxit/redis-stream-rs"
+documentation = "https://docs.rs/redis-stream"
 license = "MIT"
 readme = "README.md"
 edition = "2018"
+include = ["src/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.31"
-redis = "0.16.0"
-# We need this untill redis >= 0.16.1 is released
-redis-streams = "0.1.1"
+redis = "0.17.0"
 
 [dev-dependencies]
 rand = "0.7"
-regex = "1.3.9"
+regex = "1.4.1"
