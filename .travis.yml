@@ -1,0 +1,36 @@
+sudo: false
+language: rust
+
+sercices:
+  - redis-server
+
+# Prevents cargo's cache from growing to large, see https://levans.fr/rust_travis_cache.html
+# Need to cache the whole `.cargo` directory to keep .crates.toml for
+# cargo-update to work
+cache:
+  directories:
+    - /home/travis/.cargo
+
+# But don't cache the cargo registry
+before_cache: rm -rf /home/travis/.cargo/registry
+
+matrix:
+  include:
+    - rust: stable
+      env: RUST_VERSION=stable COMMAND=test
+
+    - rust: beta
+      env: RUST_VERSION=beta COMMAND=test
+
+    - rust: nightly
+      env: RUST_VERSION=nightly COMMAND=test
+
+    - rust: stable
+      env: COMMAND=check
+
+script:
+  - make $COMMAND
+  - make check-code
+
+notifications:
+  email: false
