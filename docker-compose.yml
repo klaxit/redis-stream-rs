@@ -1,0 +1,12 @@
+# If you need a redis for running tests:
+#
+#     docker-compose up -d
+#     make test
+#
+version: "3"
+services:
+  redis:
+    image: redis:6-alpine
+    ports:
+      - 6379:6379
+    command: ["redis-server"]
