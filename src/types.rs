@@ -1,3 +1,5 @@
+//! Defines types to use with the consumer commands.
+
 #[derive(Clone, Debug)]
 pub enum StartPosition {
   EndOfStream,
@@ -5,7 +7,33 @@ pub enum StartPosition {
   StartOfStream,
 }
 
-/// Builder options for `Consumer::init`.
+/// Builder options for [`Consumer::init`].
+///
+/// Configuration settings for stream consumers (simple or group).
+///
+/// # Basic usage
+///
+/// ```
+/// use redis_stream::consumer::{ConsumerOpts, StartPosition};
+///
+/// let opts = ConsumerOpts::default().start_pos(StartPosition::StartOfStream);
+/// ```
+///
+/// # Group consumer
+///
+/// Specifying a `group` (with `group_name` and `consumer_name`), will instruct
+/// the [`Consumer`] to use consumer groups specific commands (like `XGROUP
+/// CREATE`, `XREADGROUP` or `XACK`).
+///
+/// ```
+/// use redis_stream::consumer::{ConsumerOpts, StartPosition};
+///
+/// let opts = ConsumerOpts::default()
+///   .group("my-group", "consumer.1")
+///   .start_pos(StartPosition::StartOfStream);
+/// ```
+/// [`Consumer`]: ../consumer/struct.Consumer.html
+/// [`Consumer::init`]:../consumer/struct.Consumer.html#method.init
 #[derive(Debug)]
 pub struct ConsumerOpts {
   pub count: Option<usize>,
