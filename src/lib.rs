@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use redis_streams::{Connection, StreamCommands};
+use redis::{Commands, Connection};
 
 pub mod consumer;
 pub mod types;
@@ -29,7 +29,7 @@ pub fn produce(
 pub mod test_helpers {
   use rand::distributions::Alphanumeric;
   use rand::{thread_rng, Rng};
-  use redis_streams::{client_open, Commands, Connection, RedisResult};
+  use redis::{Commands, Connection, RedisResult};
 
   pub fn delete_stream(stream: &str) {
     redis_connection().del::<&str, bool>(stream).unwrap();
@@ -43,7 +43,7 @@ pub mod test_helpers {
   pub fn redis_connection() -> Connection {
     let redis_url =
       std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    client_open(redis_url)
+    redis::Client::open(redis_url)
       .expect("failed to open redis client")
       .get_connection()
       .expect("failed to get redis connection")

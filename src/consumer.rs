@@ -1,5 +1,6 @@
-use anyhow::{bail, Context, Result};
-use redis_streams::{Connection, RedisResult, StreamCommands, StreamReadOptions, Value};
+use anyhow::{Context, Result};
+use redis::streams::{StreamReadOptions, StreamReadReply};
+use redis::{Commands, Connection, RedisResult, Value};
 use std::collections::HashMap;
 
 pub use super::types::{ConsumerOpts, StartPosition};
@@ -13,14 +14,12 @@ pub struct Consumer<'a, F>
 where
   F: FnMut(&str, &Message) -> Result<()>,
 {
-  pub consumer_name: Option<String>,
-  pub group_name: Option<String>,
+  pub count: Option<usize>,
+  pub group: Option<(String, String)>,
   pub handled_messages: u32,
   pub handler: F,
-  pub is_group_consumer: bool,
   pub next_pos: String,
   pub process_pending: bool,
-  // raise_errors: bool,
   pub redis: &'a mut Connection,
   pub stream: String,
   pub timeout: usize,
@@ -37,44 +36,30 @@ where
     handler: F,
     opts: ConsumerOpts,
   ) -> Result<Self> {
+    let count = opts.count;
     let timeout = opts.timeout;
-    let group_name = opts.group_name;
-    let consumer_name = opts.consumer_name;
+    let group = opts.group;
     let create_stream_if_not_exists = opts.create_stream_if_not_exists;
     let process_pending = opts.process_pending;
     let start_pos = opts.start_pos;
 
-    // Guards
-    match (group_name.as_ref(), consumer_name.as_ref()) {
-      (Some(_), None) => {
-        bail!("consumer groups need group_name and consumer_name (only group_name was specified)")
-      }
-      (None, Some(_)) => bail!(
-        "consumer groups need group_name and consumer_name (only consumer_name was specified)"
-      ),
-      _ => (),
-    }
+    let (group_create_pos, consumer_start_pos) = positions(&group, process_pending, start_pos);
 
-    let is_group_consumer = group_name.as_ref().is_some() && consumer_name.as_ref().is_some();
-
-    let (group_create_pos, consumer_start_pos) = positions(&group_name, process_pending, start_pos);
-
-    if consumer_name.is_some() {
+    if let Some((group_name, _)) = &group {
       ensure_stream_and_group(
         redis,
         &stream,
-        group_name.as_ref().unwrap(),
+        group_name.as_ref(),
         &group_create_pos.unwrap(),
         create_stream_if_not_exists,
       )?;
     }
 
     Ok(Consumer {
-      consumer_name,
-      group_name,
+      count,
+      group,
       handled_messages: 0,
       handler,
-      is_group_consumer,
       next_pos: consumer_start_pos,
       process_pending,
       redis,
@@ -83,30 +68,31 @@ where
     })
   }
 
-  /// Handles new messages from the stream, dispatching them to the given
+  /// Handle new messages from the stream, and dispatch them to the registered
   /// handler.
   pub fn consume(&mut self) -> Result<()> {
-    let opts =
-      if let (Some(group_name), Some(consumer_name)) = (&self.group_name, &self.consumer_name) {
-        // We have a consumer group
-        // XREADGROUP GROUP <group_name> <consumer_name> BLOCK <timeout> STREAMS <stream> <start_pos>
-        StreamReadOptions::default()
-          .group(group_name, consumer_name)
-          .block(self.timeout)
-      } else {
-        // We have a simple consumer
-        // XREAD BLOCK <timeout> STREAMS <stream> <start_pos>
-        StreamReadOptions::default().block(self.timeout)
-      };
+    // Prepare options for XREAD
+    let opts = if let Some((group_name, consumer_name)) = &self.group {
+      // We have a consumer group
+      // XREADGROUP GROUP <group_name> <consumer_name> BLOCK <timeout> STREAMS <stream> <start_pos>
+      StreamReadOptions::default()
+        .group(group_name, consumer_name)
+        .block(self.timeout)
+    } else {
+      // We have a simple consumer
+      // XREAD BLOCK <timeout> STREAMS <stream> <start_pos>
+      StreamReadOptions::default().block(self.timeout)
+    };
 
-    let stream_results = &self
-      .redis
-      .xread_options(&[&self.stream], &[&self.next_pos], opts)?;
+    let stream_results: StreamReadReply =
+      self
+        .redis
+        .xread_options(&[&self.stream], &[&self.next_pos], opts)?;
 
     if !stream_results.keys.is_empty() {
       let stream = &stream_results.keys[0];
 
-      if self.is_group_consumer && self.process_pending && stream.ids.is_empty() {
+      if self.group.is_some() && self.process_pending && stream.ids.is_empty() {
         // We ran out of pending results, let's switch to processing most
         // recent.
         self.process_pending = false;
@@ -130,17 +116,15 @@ where
     Ok(())
   }
 
-  /// Process a message, acknowledging it's id to redis if required.
+  /// Process a message by calling the handler and acknowledging the message-id
+  /// to Redis if necessary.
   fn process_message(&mut self, id: &str, message: &Message) -> Result<()> {
     // Call handler
     (self.handler)(id, message)?;
     self.handled_messages += 1;
     // XACK if needed
-    if self.is_group_consumer {
-      let _ack_count: i32 = self
-        .redis
-        .xack(&self.stream, self.group_name.as_ref().unwrap(), &[id])
-        .unwrap();
+    if let Some((group_name, _)) = &self.group {
+      let _ack_count: i32 = self.redis.xack(&self.stream, group_name, &[id]).unwrap();
     }
     Ok(())
   }
@@ -148,7 +132,7 @@ where
 
 // Helpers
 
-/// Creates Stream and Consumer-Group if required.
+/// Create Stream and Consumer-Group if required.
 fn ensure_stream_and_group(
   redis: &mut Connection,
   stream: &str,
@@ -202,7 +186,7 @@ fn ensure_stream_and_group(
 ///     - `$` for the end of the stream
 ///     - `<id>` for a specific id
 fn positions(
-  group_name: &Option<String>,
+  group_name: &Option<(String, String)>,
   process_pending: bool,
   start_pos: StartPosition,
 ) -> (Option<String>, String) {
@@ -236,6 +220,7 @@ fn str_to_positions(a: &str, b: &str) -> (Option<String>, String) {
 mod tests {
   use super::*;
   use crate::test_helpers::*;
+  use anyhow::bail;
   use redis::FromRedisValue;
 
   fn delete_group(stream: &str, group: &str) {
@@ -264,7 +249,7 @@ mod tests {
     let mut redis = redis_connection();
     let mut redis_c = redis_connection();
     let stream = &format!("test-stream-{}", random_string(25));
-    let group = &format!("test-group-{}", random_string(25));
+    let group_name = &format!("test-group-{}", random_string(25));
     let consumer_name = &format!("test-consumer-{}", random_string(25));
 
     // it creates an empty stream (if opt)
@@ -272,23 +257,21 @@ mod tests {
 
     let opts = ConsumerOpts::default()
       .create_stream_if_not_exists(true)
-      .group_name(group)
-      .consumer_name(consumer_name);
+      .group(group_name, consumer_name);
     Consumer::init(&mut redis_c, &stream, print_message, opts).unwrap();
     assert!(key_exists(&mut redis, stream));
     // with length = 0
     let len: usize = redis.xlen(stream).unwrap();
     assert_eq!(len, 0);
 
-    delete_group(stream, group);
+    delete_group(stream, group_name);
     delete_stream(stream);
 
     // it doesn't create an empty stream (if !opt)
     assert!(!key_exists(&mut redis, stream));
     let opts = ConsumerOpts::default()
       .create_stream_if_not_exists(false)
-      .group_name(group)
-      .consumer_name(consumer_name);
+      .group(group_name, consumer_name);
     assert!(Consumer::init(&mut redis_c, stream, print_message, opts).is_err());
     assert!(!key_exists(&mut redis, stream));
   }
@@ -298,7 +281,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    let group = &format!("test-group-{}", random_string(25));
+    let group_name = &format!("test-group-{}", random_string(25));
     let consumer_name = &format!("test-consumer-{}", random_string(25));
     let stream = &format!("test-stream-{}", random_string(25));
     let mut redis = redis_connection();
@@ -357,9 +340,8 @@ mod tests {
           bail!("I don't ack message");
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         let stream_name = stream.clone();
@@ -386,9 +368,8 @@ mod tests {
           bail!("I don't ack message");
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         // skip the error so we can check pending messages are skipped in next test
@@ -405,9 +386,8 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(false);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
@@ -423,9 +403,8 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
@@ -438,16 +417,15 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
         assert!(messages.is_empty());
       }
 
-      delete_group(stream, group);
+      delete_group(stream, group_name);
 
       // it processes old messages if StartOfStream
       {
@@ -458,9 +436,8 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::StartOfStream)
-          .consumer_name(consumer_name)
           .process_pending(false);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
@@ -473,7 +450,7 @@ mod tests {
         let value = String::from_redis_value(messages.pop().unwrap().get("key").unwrap()).unwrap();
         assert_eq!(value, "value_1".to_string());
 
-        delete_group(stream, group);
+        delete_group(stream, group_name);
 
         // when process_pending is true
         let mut messages = vec![];
@@ -482,9 +459,8 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::StartOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
@@ -498,7 +474,7 @@ mod tests {
         assert_eq!(value, "value_1".to_string());
       }
 
-      delete_group(stream, group);
+      delete_group(stream, group_name);
 
       // it skip old messages if EndOfStream
       {
@@ -509,15 +485,14 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(false);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
         assert!(messages.is_empty());
 
-        delete_group(stream, group);
+        delete_group(stream, group_name);
 
         // when process_pending is true
         let mut messages = vec![];
@@ -526,9 +501,8 @@ mod tests {
           Ok(())
         };
         let opts = ConsumerOpts::default()
-          .group_name(group)
+          .group(group_name, consumer_name)
           .start_pos(StartPosition::EndOfStream)
-          .consumer_name(consumer_name)
           .process_pending(true);
         let mut consumer = Consumer::init(&mut redis_c, stream, handler, opts).unwrap();
         consumer.consume().unwrap();
@@ -536,7 +510,7 @@ mod tests {
       }
     }
 
-    delete_group(stream, group);
+    delete_group(stream, group_name);
     delete_stream(stream);
   }
 
