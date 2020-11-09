@@ -2,7 +2,7 @@
 name = "redis-stream"
 version = "0.1.0"
 authors = ["Jean-Paul Bonnetouche <dev@klaxit.com>"]
-keywords = ["redis", "database", "stream", "consumer groups"]
+keywords = ["redis", "database", "stream", "consumer-groups"]
 description = "Stream and consume data from redis streams."
 homepage = "https://github.com/klaxit/redis-stream-rs"
 repository = "https://github.com/klaxit/redis-stream-rs"
