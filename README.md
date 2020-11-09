@@ -15,7 +15,7 @@ The crate is called `redis-stream` and you can depend on it via cargo:
 
 ```ini
 [dependencies]
-redis-stream = "0.1.0"
+redis-stream = "0.1.1"
 ```
 
 ## Documentation
