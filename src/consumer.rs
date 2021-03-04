@@ -229,6 +229,7 @@ mod tests {
       .unwrap();
   }
 
+  #[allow(clippy::unnecessary_wraps)]
   fn print_message(_id: &str, message: &Message) -> Result<()> {
     for (k, v) in message {
       println!("{}: {}", k, String::from_redis_value(&v).unwrap());

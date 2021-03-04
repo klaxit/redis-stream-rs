@@ -16,8 +16,8 @@ include = ["src/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
 
 [dependencies]
 anyhow = "1.0.31"
-redis = "0.17.0"
+redis = "0.20.0"
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.8"
 regex = "1.4.1"

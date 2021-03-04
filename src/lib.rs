@@ -121,7 +121,11 @@ pub mod test_helpers {
   }
 
   pub fn random_string(n: usize) -> String {
-    thread_rng().sample_iter(&Alphanumeric).take(n).collect()
+    thread_rng()
+      .sample_iter(&Alphanumeric)
+      .take(n)
+      .map(char::from)
+      .collect()
   }
 }
 

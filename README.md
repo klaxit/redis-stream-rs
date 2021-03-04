@@ -9,6 +9,12 @@ This project is a slightly modified port of the Elixir
 [Redix.Stream](https://github.com/compound-finance/redix_stream) library to Rust
 and comes as an extension of [redis-rs](https://github.com/mitsuhiko/redis-rs).
 
+We use it at [Klaxit](https://github.com/klaxit) to process the combined log streams from Heroku's [Logplex](https://devcenter.heroku.com/articles/logplex) and automatically fix some performance issues that sometimes happen on Heroku even before our users notice them.
+
+We also use it to scale some services when needed.
+
+**It's been running in production with great success for more than 6 months.**
+
 ## Installation
 
 The crate is called `redis-stream` and you can depend on it via cargo:
