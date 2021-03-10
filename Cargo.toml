@@ -1,6 +1,6 @@
 [package]
 name = "redis-stream"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jean-Paul Bonnetouche <dev@klaxit.com>"]
 keywords = ["redis", "database", "stream", "consumer-groups"]
 description = "Stream and consume data from redis streams."
