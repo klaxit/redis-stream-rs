@@ -16,7 +16,7 @@ include = ["src/**/*", "LICENSE", "README.md", "CHANGELOG.md"]
 
 [dependencies]
 anyhow = "1.0.31"
-redis = "0.22.1"
+redis = { git = "https://github.com/klaxit/redis-rs", branch = "fix/nil-hash-value-0-22-1" }
 
 [dev-dependencies]
 rand = "0.8"
