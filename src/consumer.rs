@@ -87,7 +87,7 @@ where
     let stream_results: StreamReadReply =
       self
         .redis
-        .xread_options(&[&self.stream], &[&self.next_pos], opts)?;
+        .xread_options(&[&self.stream], &[&self.next_pos], &opts)?;
 
     if !stream_results.keys.is_empty() {
       let stream = &stream_results.keys[0];
