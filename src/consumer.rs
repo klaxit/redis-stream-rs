@@ -48,7 +48,7 @@ where
     if let Some((group_name, _)) = &group {
       ensure_stream_and_group(
         redis,
-        &stream,
+        stream,
         group_name.as_ref(),
         &group_create_pos.unwrap(),
         create_stream_if_not_exists,
@@ -87,7 +87,7 @@ where
     let stream_results: StreamReadReply =
       self
         .redis
-        .xread_options(&[&self.stream], &[&self.next_pos], opts)?;
+        .xread_options(&[&self.stream], &[&self.next_pos], &opts)?;
 
     if !stream_results.keys.is_empty() {
       let stream = &stream_results.keys[0];
@@ -232,7 +232,7 @@ mod tests {
   #[allow(clippy::unnecessary_wraps)]
   fn print_message(_id: &str, message: &Message) -> Result<()> {
     for (k, v) in message {
-      println!("{}: {}", k, String::from_redis_value(&v).unwrap());
+      println!("{}: {}", k, String::from_redis_value(v).unwrap());
     }
     Ok(())
   }
@@ -259,7 +259,7 @@ mod tests {
     let opts = ConsumerOpts::default()
       .create_stream_if_not_exists(true)
       .group(group_name, consumer_name);
-    Consumer::init(&mut redis_c, &stream, print_message, opts).unwrap();
+    Consumer::init(&mut redis_c, stream, print_message, opts).unwrap();
     assert!(key_exists(&mut redis, stream));
     // with length = 0
     let len: usize = redis.xlen(stream).unwrap();
