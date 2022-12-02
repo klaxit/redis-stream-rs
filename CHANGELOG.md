@@ -2,11 +2,6 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-
-### 0.1.3 (2022-11-23)
-
-* bump redis-rs version, use klaxit fork(https://github.com/klaxit/redis-stream-rs/pull/2)
-
 ### 0.1.2 (2021-03-10)
 
 ### 0.1.1 (2020-11-09)
